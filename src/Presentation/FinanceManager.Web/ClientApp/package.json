@@ -2,6 +2,7 @@
   "name": "budgetph-web",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "BudgetPH — Personal & Family Finance Manager",
   "scripts": {
     "dev": "vite",
