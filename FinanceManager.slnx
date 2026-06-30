@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Core/">
+    <Project Path="src/Core/FinanceManager.Application/FinanceManager.Application.csproj" />
+    <Project Path="src/Core/FinanceManager.Domain/FinanceManager.Domain.csproj" />
+  </Folder>
+  <Folder Name="/src/Infrastructure/">
+    <Project Path="src/Infrastructure/FinanceManager.Infrastructure/FinanceManager.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Presentation/">
+    <Project Path="src/Presentation/FinanceManager.API/FinanceManager.API.csproj" />
+    <Project Path="src/Presentation/FinanceManager.Web/FinanceManager.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FinanceManager.Application.Tests/FinanceManager.Application.Tests.csproj" />
+    <Project Path="tests/FinanceManager.Domain.Tests/FinanceManager.Domain.Tests.csproj" />
+  </Folder>
+</Solution>
