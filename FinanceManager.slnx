@@ -9,7 +9,6 @@
   </Folder>
   <Folder Name="/src/Presentation/">
     <Project Path="src/Presentation/FinanceManager.API/FinanceManager.API.csproj" />
-    <Project Path="src/Presentation/FinanceManager.Web/FinanceManager.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/FinanceManager.Application.Tests/FinanceManager.Application.Tests.csproj" />
