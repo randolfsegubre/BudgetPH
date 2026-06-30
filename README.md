@@ -44,7 +44,18 @@ A full-stack personal finance management web application built for Filipino user
 
 ---
 
-## Solution Structure
+## Architecture
+
+BudgetPH uses a **decoupled SPA + REST API** architecture across two repositories:
+
+| Repo | Purpose | Port |
+|---|---|---|
+| **BudgetPH** (this repo) | ASP.NET Core REST API | 5106 |
+| **[BudgetPH-Web](https://github.com/randolfsegubre/BudgetPH-Web)** | React + Vite SPA | 3000 |
+
+Both run as independent processes. The React app proxies `/api/*` requests to the API. They can be deployed independently to different hosting services (e.g., API on Azure App Service, frontend on Vercel or Azure Static Web Apps).
+
+### API Solution Structure
 
 ```
 FinanceManager/
@@ -56,9 +67,7 @@ FinanceManager/
 │   ├── Infrastructure/
 │   │   └── FinanceManager.Infrastructure/ ← EF Core DbContext, migrations, data seeding
 │   └── Presentation/
-│       ├── FinanceManager.API/          ← ASP.NET Core Web API (port 5106)
-│       └── FinanceManager.Web/
-│           └── ClientApp/              ← React + Vite SPA (port 3000)
+│       └── FinanceManager.API/          ← ASP.NET Core Web API (port 5106)
 └── tests/
     ├── FinanceManager.Domain.Tests/
     └── FinanceManager.Application.Tests/
@@ -98,15 +107,7 @@ cd BudgetPH
 dotnet restore
 ```
 
-**3. Install React dependencies**
-
-```powershell
-cd src/Presentation/FinanceManager.Web/ClientApp
-npm install
-cd ../../../..
-```
-
-**4. Configure the application**
+**3. Configure the application**
 
 The API uses `appsettings.Development.json` for local settings. It is git-ignored (contains secrets). Create it at:
 
@@ -150,27 +151,32 @@ dotnet build
 
 ### Running the Application
 
-You need **two terminals running simultaneously**.
+This repo contains only the API. The React frontend lives in the **[BudgetPH-Web](https://github.com/randolfsegubre/BudgetPH-Web)** repository.
 
-**Terminal 1 — API:**
+**API (this repo):**
 
 ```powershell
+# Option A — Visual Studio 2026
+# Open FinanceManager.slnx → press F5
+# Browser opens http://localhost:5106/swagger automatically
+
+# Option B — CLI
 dotnet run --project src/Presentation/FinanceManager.API --launch-profile http
-# API: http://localhost:5106
-# Swagger: http://localhost:5106/swagger
+# Swagger UI: http://localhost:5106/swagger
 ```
 
-**Terminal 2 — Frontend:**
+**Frontend (separate repo — must be running for the UI):**
 
 ```powershell
-cd src/Presentation/FinanceManager.Web/ClientApp
+# Clone BudgetPH-Web separately
+git clone https://github.com/randolfsegubre/BudgetPH-Web.git
+cd BudgetPH-Web
+npm install
 npm run dev
-# Frontend: http://localhost:3000
+# UI: http://localhost:3000
 ```
 
-Then open **http://localhost:3000** in your browser.
-
-> The Vite dev server proxies all `/api/*` requests to `http://localhost:5106` automatically — no CORS issues in development.
+Run both simultaneously. The Vite dev server proxies all `/api/*` requests to `http://localhost:5106` — no CORS configuration needed in development.
 
 ---
 
@@ -231,7 +237,7 @@ ASP.NET Core API (http://localhost:5106)
 | Application (DTOs, validation, mapping) | [src/Core/FinanceManager.Application/GUIDE.md](src/Core/FinanceManager.Application/GUIDE.md) |
 | Infrastructure (database, migrations) | [src/Infrastructure/FinanceManager.Infrastructure/GUIDE.md](src/Infrastructure/FinanceManager.Infrastructure/GUIDE.md) |
 | API (controllers, endpoints, auth) | [src/Presentation/FinanceManager.API/GUIDE.md](src/Presentation/FinanceManager.API/GUIDE.md) |
-| Frontend (React pages, services, stores) | [src/Presentation/FinanceManager.Web/ClientApp/GUIDE.md](src/Presentation/FinanceManager.Web/ClientApp/GUIDE.md) |
+| Frontend (React pages, services, stores) | [BudgetPH-Web repo GUIDE.md](https://github.com/randolfsegubre/BudgetPH-Web/blob/master/GUIDE.md) |
 
 ---
 
