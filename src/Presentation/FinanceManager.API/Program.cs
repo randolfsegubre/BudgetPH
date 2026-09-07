@@ -1,4 +1,5 @@
 ﻿using FinanceManager.Application;
+using FinanceManager.Domain.Enums;
 using FinanceManager.Infrastructure;
 using FinanceManager.Infrastructure.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -7,6 +8,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
 using System.Text;
+using System.Text.Json.Serialization;
 
 Log.Logger = new LoggerConfiguration().WriteTo.Console().CreateBootstrapLogger();
 
@@ -22,7 +24,11 @@ try
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
     builder.Services.AddHttpContextAccessor();
-    builder.Services.AddControllers();
+    builder.Services.AddControllers()
+        // The frontend sends/expects Currency as a string (e.g. "PHP"), but every other enum
+        // (AccountType, TransactionType, etc.) is exchanged as its numeric value. Scope the
+        // string converter to Currency only so those numeric contracts are left untouched.
+        .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<Currency>()));
     builder.Services.AddEndpointsApiExplorer();
 
     var jwt = builder.Configuration.GetSection("JwtSettings");

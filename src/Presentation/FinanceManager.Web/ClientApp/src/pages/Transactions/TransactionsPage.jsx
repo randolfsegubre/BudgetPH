@@ -60,7 +60,7 @@ export default function TransactionsPage() {
       {showForm && (
         <div className="card border border-primary-700/30">
           <h3 className="text-dark-100 font-semibold mb-4">New Transaction</h3>
-          <form onSubmit={e => { e.preventDefault(); createMutation.mutate({ ...form, amount: +form.amount }) }}
+          <form onSubmit={e => { e.preventDefault(); createMutation.mutate({ ...form, amount: +form.amount, categoryId: form.categoryId || null }) }}
             className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div className="col-span-2 md:col-span-1">
               <label className="label">Description</label>

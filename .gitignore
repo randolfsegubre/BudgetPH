@@ -60,3 +60,6 @@ Desktop.ini
 coverage/
 *.coverage
 *.coveragexml
+
+## Runtime logs (Serilog rolling files)
+src/Presentation/FinanceManager.API/logs/
