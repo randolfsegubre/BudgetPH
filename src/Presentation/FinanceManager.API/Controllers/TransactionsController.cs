@@ -9,6 +9,16 @@ using AutoMapper;
 
 namespace FinanceManager.API.Controllers;
 
+/// <summary>
+/// REST controller for Transactions - this app talks to EF Core's
+/// <see cref="ApplicationDbContext"/> directly from the controller rather
+/// than going through a CQRS/MediatR layer (unlike E-Commerse.AI.API or
+/// Lakbay's services) - there's no separate command/query handler to look
+/// in, this class *is* the read and write logic. Every action re-derives
+/// <see cref="ApplicationUser"/> via <see cref="GetAppUserAsync"/> and
+/// scopes its query/mutation to that user's own data - there is no
+/// cross-user data access anywhere in this controller.
+/// </summary>
 [Authorize]
 [Route("api/transactions")]
 public class TransactionsController(ApplicationDbContext context, IMapper mapper) : BaseApiController
@@ -62,12 +72,23 @@ public class TransactionsController(ApplicationDbContext context, IMapper mapper
         return Ok(mapper.Map<TransactionDto>(tx));
     }
 
+    /// <summary>
+    /// Creates a Transaction and applies every side effect a real financial
+    /// transaction has: it moves the owning Account's balance, optionally
+    /// moves a second Account's balance too (a Transfer), and rolls into
+    /// this month's Budget spend tracking. All of it happens in one
+    /// EF Core change-tracking unit, committed by the single
+    /// <c>SaveChangesAsync</c> at the end - if that call fails, none of
+    /// these side effects are persisted, so the balances/budget can never
+    /// drift out of sync with an actually-saved transaction.
+    /// </summary>
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateTransactionDto dto, CancellationToken ct)
     {
         var appUser = await GetAppUserAsync(ct);
         if (appUser == null) return Unauthorized();
 
+        // STEP 1 of 5 - the transaction must post against an account this user actually owns.
         var account = await context.Accounts.FirstOrDefaultAsync(a => a.Id == dto.AccountId && a.UserId == appUser.Id, ct);
         if (account == null) return BadRequest(new { error = "Account not found." });
 
@@ -87,10 +108,12 @@ public class TransactionsController(ApplicationDbContext context, IMapper mapper
             Notes = dto.Notes
         };
 
-        // Update account balance
+        // STEP 2 of 5 - apply the balance effect: Income adds to the account,
+        // everything else (Expense, Transfer-out) subtracts from it.
         account.Balance += dto.TransactionType == TransactionType.Income ? dto.Amount : -dto.Amount;
 
-        // Handle transfer
+        // STEP 3 of 5 - a Transfer also credits the destination account, on
+        // top of (not instead of) debiting the source account in STEP 2.
         if (dto.TransactionType == TransactionType.Transfer && dto.TransferToAccountId.HasValue)
         {
             var toAccount = await context.Accounts.FirstOrDefaultAsync(a => a.Id == dto.TransferToAccountId && a.UserId == appUser.Id, ct);
@@ -99,7 +122,9 @@ public class TransactionsController(ApplicationDbContext context, IMapper mapper
 
         context.Transactions.Add(tx);
 
-        // Update budget spending
+        // STEP 4 of 5 - only an Expense with a Category counts against a
+        // budget; Income/Transfer never touch budget spend tracking, and an
+        // uncategorized expense has nothing to attribute spend to.
         if (tx.CategoryId.HasValue && tx.TransactionType == TransactionType.Expense)
         {
             var budget = await context.Budgets
@@ -109,10 +134,21 @@ public class TransactionsController(ApplicationDbContext context, IMapper mapper
             if (budgetItem != null) budgetItem.SpentAmount += tx.Amount;
         }
 
+        // STEP 5 of 5 - one SaveChangesAsync commits the new Transaction and
+        // every Account/BudgetItem balance change from steps 2-4 together.
         await context.SaveChangesAsync(ct);
         return CreatedAtAction(nameof(GetById), new { id = tx.Id }, mapper.Map<TransactionDto>(tx));
     }
 
+    /// <summary>
+    /// Updates a Transaction's editable fields and re-applies its balance
+    /// effect. Note what's NOT editable here: <see cref="Transaction.TransactionType"/>
+    /// and the account it posted against never change on update - only
+    /// Amount/Category/description-style fields and Status do. That's why
+    /// "reverse then reapply" (both keyed off the same, unchanged
+    /// TransactionType) is safe: it can only ever correct the Amount, never
+    /// flip a Transaction from Income to Expense mid-edit.
+    /// </summary>
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateTransactionDto dto, CancellationToken ct)
     {
@@ -123,7 +159,7 @@ public class TransactionsController(ApplicationDbContext context, IMapper mapper
             .FirstOrDefaultAsync(t => t.Id == id && t.UserId == appUser.Id, ct);
         if (tx == null) return NotFound();
 
-        // Reverse old balance effect
+        // STEP 1 of 3 - undo the OLD Amount's balance effect before touching anything else.
         tx.Account.Balance += tx.TransactionType == TransactionType.Income ? -tx.Amount : tx.Amount;
 
         tx.CategoryId = dto.CategoryId;
@@ -135,13 +171,22 @@ public class TransactionsController(ApplicationDbContext context, IMapper mapper
         tx.Tags = dto.Tags;
         tx.Notes = dto.Notes;
 
-        // Apply new balance effect
+        // STEP 2 of 3 - apply the NEW Amount's balance effect (tx.Amount is
+        // now dto.Amount, since the assignment above already happened).
         tx.Account.Balance += tx.TransactionType == TransactionType.Income ? dto.Amount : -dto.Amount;
 
+        // STEP 3 of 3 - persist the edited Transaction and the account's net balance change together.
         await context.SaveChangesAsync(ct);
         return Ok(mapper.Map<TransactionDto>(tx));
     }
 
+    /// <summary>
+    /// Soft-deletes a Transaction (<see cref="Transaction.IsDeleted"/>/
+    /// <see cref="Transaction.DeletedAt"/>, never an actual row delete - so
+    /// a user's transaction history stays reconstructable) and reverses its
+    /// balance effect, so a deleted transaction stops counting toward the
+    /// account's balance without needing a separate "undo" endpoint.
+    /// </summary>
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {

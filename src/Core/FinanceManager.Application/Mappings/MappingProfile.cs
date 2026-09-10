@@ -7,6 +7,14 @@ using FinanceManager.Domain.Entities;
 
 namespace FinanceManager.Application.Mappings;
 
+/// <summary>
+/// AutoMapper profile - the single place every Domain entity -> DTO shape
+/// is defined for this app. Registered once via
+/// <c>AddAutoMapper(typeof(MappingProfile))</c> in the Infrastructure/API
+/// composition root; every CQRS query handler in Features/*/Queries then
+/// calls <c>IMapper.Map&lt;TDto&gt;(entity)</c> rather than hand-writing the
+/// same entity-to-DTO copying logic in every handler.
+/// </summary>
 public class MappingProfile : Profile
 {
     public MappingProfile()
