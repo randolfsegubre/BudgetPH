@@ -13,6 +13,7 @@ import InvestmentsPage from './pages/Investments/InvestmentsPage'
 import SavingsPage from './pages/Savings/SavingsPage'
 import ReportsPage from './pages/Reports/ReportsPage'
 import SettingsPage from './pages/Settings/SettingsPage'
+import NotFoundPage from './pages/NotFoundPage'
 
 function PrivateRoute({ children }) {
   const token = useAuthStore(s => s.token)
@@ -46,7 +47,8 @@ export default function App() {
         <Route path="/settings"     element={<SettingsPage />} />
       </Route>
 
-      <Route path="*" element={<Navigate to="/" replace />} />
+      {/* A real 404 page, not a silent redirect - a bad URL should say so, not just bounce home. */}
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )
 }
