@@ -4,6 +4,26 @@ A full-stack personal finance management web application built for Filipino user
 
 ---
 
+## Verified State (2026-09-07)
+
+This project was audited end-to-end on 2026-09-07: clean `dotnet build` of the whole solution, backend running locally against a real SQL Server database with migrations applied and system categories seeded, and the React frontend built, run in dev mode, and driven through a real browser session that registered a user, logged in, created accounts, and posted transactions — all round-tripping through the live API (not mocked).
+
+- **Backend**: `dotnet build` succeeds with 0 errors (7 warnings — see Known Issues). `dotnet test` passes (1 domain test, 1 application test — coverage is minimal, see "What's left"). API runs with `dotnet run --project src/Presentation/FinanceManager.API --launch-profile http`, connects to a real database, applies EF Core migrations automatically on startup (`db.Database.MigrateAsync()` in `Program.cs`), and seeds the 26 system categories.
+- **Frontend**: `npm install` and `npm run build` both succeed (one "chunk larger than 500kB" warning, cosmetic). `npm run dev` serves the SPA on port 3000, proxying `/api/*` to the API on port 5106 — confirmed working via the browser, not just config inspection.
+- **End-to-end confirmed working in a real browser**: register → login → dashboard renders real net worth/account data → Accounts page create/list → Transactions page create (with and without a category) → dashboard updates live from the new transaction. Screenshots taken during the audit showed real PHP/USD-formatted balances, not placeholder data.
+
+### Bugs found and fixed during this audit
+
+| Bug | Symptom | Fix |
+|---|---|---|
+| `Currency` enum serialized/deserialized as a raw integer | Every "Add Account" request failed with `400 Bad Request` because the frontend sends `currency: "PHP"` (a string) but the API expected a number | Registered `JsonStringEnumConverter<Currency>()` scoped to just the `Currency` type in `Program.cs`, so `Currency` round-trips as `"PHP"`/`"USD"` while every other enum (`AccountType`, `TransactionType`, etc.) keeps its existing numeric contract untouched |
+| `AccountDto` (a record) couldn't be constructed by AutoMapper | Every call to `GET /api/accounts`, `GET /api/accounts/{id}`, and `POST /api/accounts` threw `System.ArgumentException: ... needs to have a constructor with 0 args` (HTTP 500) | `CreditCard`/`Loan`/`Investment` ctor params don't line up by name with the entity's `CreditCardDetails`/`LoanDetails`/`InvestmentAccountDetails` navigation properties. `ForMember` silently can't redirect to a record's constructor parameter, so AutoMapper fell back to `Activator.CreateInstance`, which fails for records with no parameterless ctor. Switched to `ForCtorParam` in `MappingProfile.cs`, which is the documented way to target a specific ctor parameter |
+| Transaction form sent `categoryId: ""` when "No category" was selected | `POST /api/transactions` failed with `400 Bad Request` ("The JSON value could not be converted ... categoryId") any time a transaction was added without picking a category — a very common case | `TransactionsPage.jsx` now sends `categoryId: form.categoryId || null` on submit instead of the raw empty string |
+
+None of these were large unfinished features — all three were small, mechanical wiring/contract bugs in otherwise complete, working code, and all three were reproduced against the real running app (not guessed from reading source) before being fixed and re-verified.
+
+---
+
 ## What This Application Does
 
 | Feature | Description |
@@ -127,13 +147,18 @@ With this content:
   "ConnectionStrings": {
     "DefaultConnection": "Server=(localdb)\\mssqllocaldb;Database=BudgetPH_Dev;Trusted_Connection=True;MultipleActiveResultSets=true"
   },
+  "JwtSettings": {
+    "SecretKey": "<generate your own random 32+ character string for local dev>"
+  },
   "Serilog": {
     "MinimumLevel": { "Default": "Debug", "Override": { "Microsoft.EntityFrameworkCore": "Information" } }
   }
 }
 ```
 
-The base `appsettings.json` already has a JWT secret for development. **Do not use the same secret in production.**
+> Any reachable SQL Server works, not just LocalDB — this was verified during the 2026-09-07 audit against both a plain `Server=(localdb)\mssqllocaldb` instance and a full local `Server=localhost` SQL Server 2025 install with `TrustServerCertificate=True`. Use whichever you have.
+
+The committed `appsettings.json` intentionally ships a **placeholder** `JwtSettings:SecretKey` (`CHANGE_THIS_...`) rather than a real key — it is not usable as-is. Every developer must set a real value in their own `appsettings.Development.json` (shown above) or via user-secrets / an environment variable. **Never commit a real secret to `appsettings.json`.**
 
 **5. Create the database**
 
@@ -250,4 +275,26 @@ ASP.NET Core API (http://localhost:5106)
 |---|---|---|
 | AutoMapper 13.0.1 vulnerability GHSA-rvv3-g6hj-g44x | ⚠️ HIGH | Functional. Planned replacement with Mapster. |
 | EF decimal precision warnings on startup | ℹ️ INFO | Cosmetic — data is not lost. Fix: add `HasPrecision(18,4)` in `OnModelCreating`. |
-| JWT secret in appsettings.json | 🔴 SECURITY | Change before any deployment. Use environment variables in production. |
+| JWT secret must be supplied per-environment | 🔴 SECURITY | `appsettings.json` ships a `CHANGE_THIS_...` placeholder (not a real key) — set a real one via `appsettings.Development.json`/user-secrets locally and via environment variables/secret manager in any deployed environment. |
+| No `GET /api/categories`-style admin endpoint to manage custom (non-system) categories | ℹ️ INFO | Reading categories works (`GET /api/transactions/categories`, used by the transaction form); there's no UI/endpoint yet to let a user create their own categories beyond the 26 seeded system ones. |
+| `GET /api/transactions/categories` returns raw `Category` entities, not a DTO | ℹ️ INFO | Works correctly (verified serving real data), but leaks internal EF navigation/audit fields (`domainEvents`, `subCategories`, `createdBy`, etc.) instead of going through AutoMapper like other endpoints. Low risk (read-only, no secrets), but inconsistent with the rest of the API — worth a `CategoryDto` pass later. |
+| Test coverage is minimal | ⚠️ MEDIUM | Only 1 domain test + 1 application test exist; both pass, but there is no meaningful coverage of controllers, AutoMapper profiles, or the auth flow. The AutoMapper/record bug fixed in this audit (see "Verified State" above) is exactly the kind of regression a mapping-profile unit test would have caught. |
+| CORS origin list is hardcoded to dev ports | ℹ️ INFO | `Program.cs` allows `http://localhost:3000`, `http://localhost:5173`, and `WebAppUrl` config. Fine for local dev; a real frontend origin must be added (via `WebAppUrl` or another entry) before deploying. |
+| Committed `logs/*.txt` files under `FinanceManager.API/logs/` | ℹ️ INFO | Serilog's rolling file sink output appears to be tracked in git rather than ignored. Harmless but should be added to `.gitignore` at some point to stop local run logs from showing up as diffs. |
+
+---
+
+## Path to a Test/Production Deployment
+
+The app is genuinely dev-complete (see "Verified State" above), but the following still need real decisions/work before it should run anywhere but a developer's machine:
+
+1. **Secrets.** `JwtSettings:SecretKey` and the DB connection string currently live in local, git-ignored `appsettings.Development.json` / SQL LocalDB or a local SQL Server instance. For a deployed environment, move both to actual environment variables or a secret manager (Azure Key Vault, AWS Secrets Manager, etc.) — nothing in `Program.cs` needs to change, it already reads from `IConfiguration`.
+2. **A real database server.** LocalDB and a local Windows SQL Server instance are both dev-only. Point `ConnectionStrings:DefaultConnection` at a real hosted SQL Server (Azure SQL, an RDS SQL Server instance, etc.) and re-run `dotnet ef database update` against it — the existing single `InitialCreate` migration applies cleanly (confirmed during this audit).
+3. **CORS origins.** Add the real deployed frontend origin(s) to the `AllowWeb` policy in `Program.cs` (currently only `localhost:3000`/`5173` and an optional `WebAppUrl` config value).
+4. **HTTPS/hosting.** `Program.cs` calls `UseHttpsRedirection()` but the `http` launch profile only binds an HTTP port — fine for local dev, but a real deployment needs a proper TLS-terminating host (reverse proxy, App Service, container platform, etc.) in front of the API.
+5. **Frontend build artifact.** `npm run build` outputs static files to `src/Presentation/FinanceManager.Web/wwwroot` (see `vite.config.js`). Decide whether the API serves these as static files or whether the SPA is deployed separately (e.g. a CDN/static host) with the API's real base URL swapped in for the dev-only Vite proxy.
+6. **AutoMapper vulnerability.** GHSA-rvv3-g6hj-g44x (see Known Issues) should be resolved — either an AutoMapper patch/major-version update or the already-planned Mapster migration — before shipping publicly.
+7. **Widen test coverage** beyond the current 2 unit tests, especially around the AutoMapper profiles and controllers, given the class of bug this audit found (a working feature silently 500ing/400ing end-to-end with no test to catch it).
+8. **Categories DTO cleanup** and **`.gitignore` for `logs/`** (see Known Issues) — small polish items, not blockers.
+
+None of the above were addressed in this audit because they require an environment/infrastructure decision (where to host, which secret manager, which domain) rather than a code fix — they're listed here so the next session (or a hiring manager reading this repo) knows exactly what's stubbed versus what's real.

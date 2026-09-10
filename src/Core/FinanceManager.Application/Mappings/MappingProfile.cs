@@ -7,15 +7,29 @@ using FinanceManager.Domain.Entities;
 
 namespace FinanceManager.Application.Mappings;
 
+/// <summary>
+/// AutoMapper profile - the single place every Domain entity -> DTO shape
+/// is defined for this app. Registered once via
+/// <c>AddAutoMapper(typeof(MappingProfile))</c> in the Infrastructure/API
+/// composition root; every CQRS query handler in Features/*/Queries then
+/// calls <c>IMapper.Map&lt;TDto&gt;(entity)</c> rather than hand-writing the
+/// same entity-to-DTO copying logic in every handler.
+/// </summary>
 public class MappingProfile : Profile
 {
     public MappingProfile()
     {
         // Accounts
+        // AccountDto is a record (constructor-mapped, no parameterless ctor). Its CreditCard/Loan/Investment
+        // ctor params don't line up by name with the source's CreditCardDetails/LoanDetails/InvestmentAccountDetails
+        // navigation properties, so AutoMapper can't bind them by convention. ForMember silently fails to redirect
+        // to a ctor parameter for immutable/record types (it only rebinds settable members) — that caused AutoMapper
+        // to fall back to Activator.CreateInstance(AccountDto), which throws because records have no 0-arg ctor.
+        // ForCtorParam is the documented way to map into a specific constructor parameter, so use that instead.
         CreateMap<Account, AccountDto>()
-            .ForMember(d => d.CreditCard, o => o.MapFrom(s => s.CreditCardDetails))
-            .ForMember(d => d.Loan, o => o.MapFrom(s => s.LoanDetails))
-            .ForMember(d => d.Investment, o => o.MapFrom(s => s.InvestmentAccountDetails));
+            .ForCtorParam(nameof(AccountDto.CreditCard), o => o.MapFrom(s => s.CreditCardDetails))
+            .ForCtorParam(nameof(AccountDto.Loan), o => o.MapFrom(s => s.LoanDetails))
+            .ForCtorParam(nameof(AccountDto.Investment), o => o.MapFrom(s => s.InvestmentAccountDetails));
 
         CreateMap<CreditCardDetails, CreditCardSummaryDto>()
             .ForMember(d => d.AvailableCredit, o => o.MapFrom(s => s.CreditLimit + s.Account.Balance));
