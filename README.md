@@ -22,6 +22,14 @@ This project was audited end-to-end on 2026-09-07: clean `dotnet build` of the w
 
 None of these were large unfinished features — all three were small, mechanical wiring/contract bugs in otherwise complete, working code, and all three were reproduced against the real running app (not guessed from reading source) before being fixed and re-verified.
 
+**Screenshots from the audit** (real seeded test account, not mockups): [`docs/e2e/budgetph-account-added.png`](docs/e2e/budgetph-account-added.png) shows a real BPI Credit Card account created via the UI (exercising the `ForCtorParam` fix above); [`docs/e2e/budgetph-balance-updated.png`](docs/e2e/budgetph-balance-updated.png) shows the same account after posting a ₱250 transaction with no category selected (exercising the `categoryId: null` fix above) — Total Liabilities correctly updated to ₱250.00.
+
+---
+
+## Error handling — E2E verified 2026-09-10
+
+`ErrorBoundary.jsx` (class component, catches render errors — wraps `<QueryClientProvider>` in `main.jsx`) and `NotFoundPage.jsx` (replaces the previous silent `<Navigate to="/" replace />` catch-all, which hid genuinely broken links instead of surfacing them) were added and verified live: a temporary throwing component confirmed the boundary catches the error and shows the fallback UI, and clicking "Back to Home" reloads to the dashboard while the user is still authenticated — a real `window.location.href` reset, not a soft re-render that would hit the same broken state again.
+
 ---
 
 ## What This Application Does
